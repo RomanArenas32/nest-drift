@@ -1,0 +1,18 @@
+# Rust
+/target/
+Cargo.lock
+
+# Snapshots generados por nest-drift
+*.snapshot.json
+
+# macOS
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Variables de entorno
+.env
+.env.*
