@@ -1,8 +1,8 @@
 # nest-drift
 
-A CLI tool to detect schema drift in NestJS projects.
+Detects schema drift in NestJS projects. Validates consistency between TypeORM entities and DTOs, snapshots your schema, diffs changes over time, and cross-checks LLM tool definitions against your actual codebase.
 
-Validates consistency between entities and DTOs, snapshots your schema at a point in time, diffs changes across commits, and cross-checks LLM tool definitions against your actual codebase — so broken contracts get caught before they reach production.
+Available as both a **CLI tool** and a **Node.js library**.
 
 ---
 
@@ -14,19 +14,30 @@ Someone renames a field in a TypeORM entity. The DTO doesn't get updated. The LL
 
 ---
 
-## Commands
+## Installation
+
+```bash
+npm install -D nest-drift
+```
+
+---
+
+## Usage: CLI
+
+Run commands directly from the terminal or npm scripts. Ideal for CI pipelines and pre-commit hooks.
 
 ### `check` — validate entities vs DTOs
 
-Scans your project for `@Entity` classes and their related DTOs, then reports missing fields and type mismatches.
+Scans for `@Entity` classes and their related DTOs, then reports missing fields and type mismatches.
 
 ```bash
-nest-drift check ./my-nestjs-project
+npx nest-drift check .
+npx nest-drift check ./my-nestjs-project
 ```
 
 ```
 nest-drift check
-Scanning: ./my-nestjs-project
+Scanning: .
 
 Found 3 entities, 7 DTOs
 
@@ -40,25 +51,27 @@ OK   Product <-> CreateProductDto
 Issues found. Review the above.
 ```
 
+Exits with code `1` if issues are found.
+
 ---
 
 ### `snapshot` — capture the current schema
 
-Serializes all entities and DTOs into a JSON file you can commit or store as a baseline.
+Serializes all entities and DTOs to a JSON file you can commit as a baseline.
 
 ```bash
-nest-drift snapshot ./my-nestjs-project
-nest-drift snapshot ./my-nestjs-project --output custom-snap.json
+npx nest-drift snapshot .
+npx nest-drift snapshot . --output custom-snap.json
 ```
 
 ---
 
-### `diff` — compare schema against a snapshot
+### `diff` — compare against a snapshot
 
-Compares the current state of your project against a previously generated snapshot. Reports added, removed, and modified classes and fields.
+Compares the current state of your project against a previously generated snapshot.
 
 ```bash
-nest-drift diff nest-drift.snapshot.json ./my-nestjs-project
+npx nest-drift diff nest-drift.snapshot.json .
 ```
 
 ```
@@ -75,7 +88,7 @@ DTOs
 Schema has changed since last snapshot.
 ```
 
-Exits with code `1` if changes are detected — ideal for CI gates or pre-commit hooks.
+Exits with code `1` if changes are detected.
 
 ---
 
@@ -84,11 +97,11 @@ Exits with code `1` if changes are detected — ideal for CI gates or pre-commit
 Reads your LLM tool definitions (JSON or YAML) and verifies that every property maps to a real field in your codebase with a compatible type.
 
 ```bash
-nest-drift validate tools.json ./my-nestjs-project
-nest-drift validate tools.yaml ./my-nestjs-project
+npx nest-drift validate tools.json .
+npx nest-drift validate tools.yaml .
 ```
 
-Supports both **Anthropic** (`input_schema`) and **OpenAI** (`parameters`) tool formats:
+Supports both **Anthropic** (`input_schema`) and **OpenAI** (`parameters`) tool formats.
 
 ```json
 {
@@ -108,63 +121,243 @@ Supports both **Anthropic** (`input_schema`) and **OpenAI** (`parameters`) tool 
 ```
 
 ```
-nest-drift validate
-Tools:   tools.json
-Project: ./my-nestjs-project
-
-Found 2 tools, 5 DTOs, 2 entities
+Found 2 tools
 
 OK   create_user -> CreateUserDto (src/user/user.dto.ts)
 FAIL update_user -> UpdateUserDto
      Tool 'update_user': property 'username' not found in codebase
-     Tool 'update_user': property 'age' type mismatch — tool has 'integer', codebase has 'string'
 
 Validation failed. Tool definitions are out of sync.
 ```
 
 ---
 
-## Use as a pre-commit hook
-
-Add to your `package.json`:
+### CLI in package.json scripts
 
 ```json
 {
   "scripts": {
-    "precommit": "nest-drift check ."
+    "drift:check":    "nest-drift check .",
+    "drift:snapshot": "nest-drift snapshot .",
+    "drift:diff":     "nest-drift diff nest-drift.snapshot.json ."
   }
 }
 ```
 
-Or use with [Husky](https://typicode.github.io/husky):
+### Pre-commit hook (Husky)
 
 ```bash
 npx husky add .husky/pre-commit "nest-drift check ."
 ```
 
----
-
-## Use in CI
+### CI pipeline (GitHub Actions)
 
 ```yaml
 - name: Check schema drift
-  run: |
-    nest-drift diff nest-drift.snapshot.json .
+  run: npx nest-drift diff nest-drift.snapshot.json .
 ```
 
 ---
 
-## Installation
+## Usage: Library
 
-> npm distribution coming soon.
+Import the functions directly in your TypeScript/JavaScript code and work with the results programmatically. Ideal when you need custom reporting, alerting, or integration with other tools.
 
-For now, build from source:
+### Installation
 
 ```bash
-git clone https://github.com/RomanArenas32/nest-drift.git
-cd nest-drift
-cargo build --release
-./target/release/nest-drift --help
+npm install nest-drift
+```
+
+### `check(path)`
+
+Returns an object describing the consistency state between entities and DTOs.
+
+```ts
+import { check } from 'nest-drift'
+
+const report = check('./src')
+
+console.log(`${report.entityCount} entities, ${report.dtoCount} DTOs`)
+
+if (report.hasIssues) {
+  for (const result of report.results) {
+    if (!result.ok) {
+      console.log(`[${result.entity}] → ${result.dto ?? 'no DTO found'}`)
+      for (const issue of result.issues) {
+        // issue.kind: "no_dto" | "field_missing" | "type_mismatch"
+        console.log(`  ${issue.kind}: ${issue.message}`)
+      }
+    }
+  }
+}
+```
+
+---
+
+### `snapshot(path)`
+
+Returns the parsed schema as a plain object — no file is written.
+
+```ts
+import { snapshot } from 'nest-drift'
+
+const schema = snapshot('./src')
+
+console.log(schema.entities) // EntitySchema[]
+console.log(schema.dtos)     // DtoSchema[]
+
+// Each schema has: { name, file, fields: [{ name, fieldType, optional }] }
+```
+
+If you want to save it to disk:
+
+```ts
+import { snapshot } from 'nest-drift'
+import { writeFileSync } from 'fs'
+
+const schema = snapshot('./src')
+writeFileSync('nest-drift.snapshot.json', JSON.stringify(schema, null, 2))
+```
+
+---
+
+### `diff(snapshotPath, path)`
+
+Compares a snapshot file against the current state of the project.
+
+```ts
+import { diff } from 'nest-drift'
+
+const report = diff('nest-drift.snapshot.json', './src')
+
+if (report.hasChanges) {
+  for (const change of report.changes) {
+    // change.kind: "added" | "removed" | "modified"
+    // change.schemaType: "entity" | "dto"
+    console.log(`${change.kind} ${change.schemaType}: ${change.name}`)
+
+    for (const fc of change.fieldChanges) {
+      // fc.kind: "added" | "removed" | "type_changed" | "optionality_changed"
+      console.log(`  ${fc.kind}: ${fc.field} (${fc.before} → ${fc.after})`)
+    }
+  }
+
+  // Custom alerting
+  await sendSlackAlert(report.changes)
+}
+```
+
+Throws if the snapshot file doesn't exist or is invalid.
+
+---
+
+### `validate(toolsPath, path)`
+
+Validates LLM tool definitions against the codebase.
+
+```ts
+import { validate } from 'nest-drift'
+
+const report = validate('./tools.json', './src')
+
+for (const result of report.results) {
+  if (result.ok) {
+    console.log(`✓ ${result.tool} → ${result.matchedSchema}`)
+  } else {
+    console.log(`✗ ${result.tool}`)
+    for (const issue of result.issues) {
+      // issue.kind: "no_match" | "property_missing" | "type_mismatch" | "no_schema"
+      console.log(`  ${issue.message}`)
+    }
+  }
+}
+```
+
+---
+
+### Full example: custom CI script
+
+```ts
+import { check, diff } from 'nest-drift'
+import { execSync } from 'child_process'
+
+const checkReport = check('./src')
+const diffReport  = diff('nest-drift.snapshot.json', './src')
+
+if (checkReport.hasIssues || diffReport.hasChanges) {
+  const summary = {
+    checkIssues:  checkReport.results.filter(r => !r.ok).map(r => r.entity),
+    schemaChanges: diffReport.changes.map(c => `${c.kind} ${c.name}`),
+  }
+
+  // Post to Slack, save to DB, open a GitHub issue — whatever you need
+  await notifyTeam(summary)
+  process.exit(1)
+}
+```
+
+---
+
+## Return types
+
+```ts
+// check()
+interface CheckReport {
+  entityCount: number
+  dtoCount: number
+  hasIssues: boolean
+  results: EntityCheckResult[]
+}
+interface EntityCheckResult {
+  entity: string
+  dto: string | null
+  ok: boolean
+  issues: { kind: 'no_dto' | 'field_missing' | 'type_mismatch', message: string }[]
+}
+
+// snapshot()
+interface ProjectSnapshot {
+  entities: EntitySchema[]
+  dtos: DtoSchema[]
+}
+interface EntitySchema {
+  name: string
+  file: string
+  fields: { name: string, fieldType: string, optional: boolean }[]
+}
+
+// diff()
+interface DiffReport {
+  hasChanges: boolean
+  changes: SchemaChange[]
+}
+interface SchemaChange {
+  kind: 'added' | 'removed' | 'modified'
+  schemaType: 'entity' | 'dto'
+  name: string
+  fieldChanges: FieldChange[]
+}
+interface FieldChange {
+  kind: 'added' | 'removed' | 'type_changed' | 'optionality_changed'
+  field: string
+  before: string | null
+  after: string | null
+}
+
+// validate()
+interface ValidateReport {
+  toolCount: number
+  hasIssues: boolean
+  results: ToolValidateResult[]
+}
+interface ToolValidateResult {
+  tool: string
+  matchedSchema: string | null
+  matchedFile: string | null
+  ok: boolean
+  issues: { kind: 'no_match' | 'property_missing' | 'type_mismatch' | 'no_schema', message: string }[]
+}
 ```
 
 ---
@@ -172,6 +365,7 @@ cargo build --release
 ## Built with
 
 - [Rust](https://www.rust-lang.org/)
+- [napi-rs](https://napi.rs/) — native Node.js bindings
 - [clap](https://docs.rs/clap) — CLI parsing
 - [serde](https://serde.rs/) + [serde_json](https://docs.rs/serde_json) + [serde_yaml](https://docs.rs/serde_yaml) — serialization
 - [walkdir](https://docs.rs/walkdir) — directory traversal

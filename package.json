@@ -1,0 +1,34 @@
+{
+  "name": "nest-drift",
+  "version": "0.1.0",
+  "description": "CLI and library to detect schema drift in NestJS projects",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "bin": {
+    "nest-drift": "./bin/nest-drift"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "bin/",
+    "*.node"
+  ],
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform"
+  },
+  "keywords": [
+    "nestjs",
+    "typeorm",
+    "schema",
+    "drift",
+    "lint",
+    "validation",
+    "dto",
+    "entity"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@napi-rs/cli": "^2"
+  }
+}
