@@ -5,7 +5,7 @@
   "main": "index.js",
   "types": "index.d.ts",
   "bin": {
-    "nest-drift": "./bin/nest-drift"
+    "nest-drift": "./bin/nest-drift.js"
   },
   "files": [
     "index.js",
@@ -25,7 +25,9 @@
     "lint",
     "validation",
     "dto",
-    "entity"
+    "entity",
+    "llm",
+    "tools"
   ],
   "license": "MIT",
   "devDependencies": {
