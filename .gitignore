@@ -1,6 +1,5 @@
 # Rust
 /target/
-Cargo.lock
 
 # Snapshots generados por nest-drift
 *.snapshot.json

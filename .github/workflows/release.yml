@@ -30,6 +30,12 @@ jobs:
             build: napi build --platform --release
 
     runs-on: ${{ matrix.os }}
+
+    env:
+      # Disable HTTP/2 multiplexing — fixes curl [16] errors on Windows runners
+      CARGO_HTTP_MULTIPLEXING: false
+      CARGO_NET_RETRY: 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -38,6 +44,11 @@ jobs:
           node-version: 20
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Install napi-rs cli
         run: npm install -g @napi-rs/cli
