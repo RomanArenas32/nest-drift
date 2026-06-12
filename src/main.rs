@@ -46,6 +46,12 @@ enum Commands {
         #[arg(default_value = ".")]
         path: String,
     },
+    /// Watch for file changes and re-run check automatically
+    Watch {
+        /// Path to the NestJS project
+        #[arg(default_value = ".")]
+        path: String,
+    },
 }
 
 fn main() {
@@ -56,5 +62,6 @@ fn main() {
         Commands::Snapshot { path, output } => commands::snapshot::run(&path, &output),
         Commands::Diff { snapshot, path } => commands::diff::run(&snapshot, &path),
         Commands::Validate { tools, path } => commands::validate::run(&tools, &path),
+        Commands::Watch { path } => commands::watch::run(&path),
     }
 }

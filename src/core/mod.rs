@@ -1,6 +1,7 @@
 pub mod check;
 pub mod diff;
 pub mod validate;
+pub mod watch;
 
 // --- Check ---
 

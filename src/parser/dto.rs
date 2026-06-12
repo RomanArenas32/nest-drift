@@ -109,6 +109,5 @@ fn extract_fields(
             });
         }
     }
-
     fields
 }

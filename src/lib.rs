@@ -3,11 +3,28 @@
 mod core;
 mod parser;
 
+use std::collections::HashMap;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU32, Ordering},
+    Arc, Mutex, OnceLock,
+};
+
+use napi::threadsafe_function::{ErrorStrategy, ThreadSafeCallContext, ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
+
+// ── Watcher registry ──────────────────────────────────────────────────────────
+
+fn watchers() -> &'static Mutex<HashMap<u32, Arc<AtomicBool>>> {
+    static WATCHERS: OnceLock<Mutex<HashMap<u32, Arc<AtomicBool>>>> = OnceLock::new();
+    WATCHERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+static NEXT_WATCH_ID: AtomicU32 = AtomicU32::new(1);
 
 // ── Check ─────────────────────────────────────────────────────────────────────
 
 #[napi(object)]
+#[derive(serde::Serialize)]
 pub struct CheckIssue {
     /// "no_dto" | "field_missing" | "type_mismatch"
     pub kind: String,
@@ -15,6 +32,7 @@ pub struct CheckIssue {
 }
 
 #[napi(object)]
+#[derive(serde::Serialize)]
 pub struct EntityCheckResult {
     pub entity: String,
     pub dto: Option<String>,
@@ -23,6 +41,7 @@ pub struct EntityCheckResult {
 }
 
 #[napi(object)]
+#[derive(serde::Serialize)]
 pub struct CheckReport {
     pub entity_count: u32,
     pub dto_count: u32,
@@ -269,4 +288,78 @@ pub fn validate(tools_path: String, path: String) -> napi::Result<ValidateReport
             })
             .collect(),
     })
+}
+
+// ── Watch ─────────────────────────────────────────────────────────────────────
+
+/// Start watching `path` for `.ts` file changes.
+/// `callback` receives a JSON-serialized `CheckReport` on every change.
+/// Returns a watch ID — pass it to `watchStop` to stop watching.
+#[napi]
+pub fn watch_start(path: String, callback: napi::JsFunction) -> napi::Result<u32> {
+    let tsfn: ThreadsafeFunction<String, ErrorStrategy::Fatal> =
+        callback.create_threadsafe_function(0, |ctx: ThreadSafeCallContext<String>| {
+            ctx.env
+                .create_string(&ctx.value)
+                .map(|s| vec![s.into_unknown()])
+        })?;
+
+    let path_clone = path.clone();
+    let handle = core::watch::watch(&path, 300, move || {
+        let report = core::check::run(&path_clone);
+
+        let napi_report = CheckReport {
+            entity_count: report.entity_count as u32,
+            dto_count: report.dto_count as u32,
+            has_issues: report.has_issues(),
+            results: report
+                .results
+                .into_iter()
+                .map(|r| {
+                    let ok = r.is_ok();
+                    EntityCheckResult {
+                        entity: r.entity,
+                        dto: r.dto,
+                        ok,
+                        issues: r
+                            .issues
+                            .into_iter()
+                            .map(|i| CheckIssue {
+                                kind: match i.kind {
+                                    core::CheckIssueKind::NoDto => "no_dto".to_string(),
+                                    core::CheckIssueKind::FieldMissing => {
+                                        "field_missing".to_string()
+                                    }
+                                    core::CheckIssueKind::TypeMismatch => {
+                                        "type_mismatch".to_string()
+                                    }
+                                },
+                                message: i.message,
+                            })
+                            .collect(),
+                    }
+                })
+                .collect(),
+        };
+
+        if let Ok(json) = serde_json::to_string(&napi_report) {
+            tsfn.call(json, ThreadsafeFunctionCallMode::NonBlocking);
+        }
+    });
+
+    let id = NEXT_WATCH_ID.fetch_add(1, Ordering::Relaxed);
+    watchers()
+        .lock()
+        .unwrap()
+        .insert(id, handle.into_stop_flag());
+
+    Ok(id)
+}
+
+/// Stop a running watcher by its ID.
+#[napi]
+pub fn watch_stop(id: u32) {
+    if let Some(flag) = watchers().lock().unwrap().remove(&id) {
+        flag.store(true, Ordering::Relaxed);
+    }
 }

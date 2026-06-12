@@ -30,4 +30,21 @@ if (!existsSync(bindingPath)) {
 
 const native = require(bindingPath)
 
-module.exports = native
+/**
+ * Watch `path` for TypeScript file changes and call `callback` with a
+ * fresh CheckReport on every change (debounced 300ms).
+ *
+ * @param {string} path - Path to the NestJS project
+ * @param {(report: import('./index').CheckReport) => void} callback
+ * @returns {() => void} stop function — call it to stop watching
+ */
+function watch(path, callback) {
+  const id = native.watchStart(path, (_err, json) => {
+    try {
+      callback(JSON.parse(json))
+    } catch (_) {}
+  })
+  return () => native.watchStop(id)
+}
+
+module.exports = { ...native, watch }

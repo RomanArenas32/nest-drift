@@ -171,6 +171,56 @@ if (command === 'check') {
     console.log(bold(green('All tools are valid.')))
   }
 
+// ── watch ─────────────────────────────────────────────────────────────────────
+
+} else if (command === 'watch') {
+  const path = args[1] ?? '.'
+  console.log(bold('nest-drift watch'))
+  console.log('Watching: ' + dim(path))
+  console.log(dim('Press Ctrl+C to stop.\n'))
+
+  function printReport(report) {
+    if (report.entityCount === 0) {
+      console.log(yellow('No @Entity classes found.'))
+      return
+    }
+    console.log(`Found ${cyan(report.entityCount)} entities, ${cyan(report.dtoCount)} DTOs\n`)
+    for (const result of report.results) {
+      const dto = result.dto ?? '—'
+      if (result.ok) {
+        console.log(`${bold(green('OK  '))} ${green(result.entity)} <-> ${dim(dto)}`)
+      } else {
+        console.log(`${bold(red('FAIL'))} ${red(result.entity)} <-> ${dim(dto)}`)
+        for (const issue of result.issues) {
+          console.log(`     ${red(issue.message)}`)
+        }
+      }
+    }
+    console.log()
+    if (report.hasIssues) {
+      console.log(bold(red('Issues found.')))
+    } else {
+      console.log(bold(green('All checks passed.')))
+    }
+  }
+
+  // Run once immediately
+  printReport(native.check(path))
+
+  // Watch for changes
+  const stop = native.watch(path, (report) => {
+    process.stdout.write('\x1b[2J\x1b[H')
+    const now = new Date().toLocaleTimeString()
+    console.log(`${bold('nest-drift watch')} ${dim('[' + now + ']')}\n`)
+    printReport(report)
+  })
+
+  process.on('SIGINT', () => {
+    stop()
+    console.log('\n' + dim('Stopped.'))
+    process.exit(0)
+  })
+
 // ── help ──────────────────────────────────────────────────────────────────────
 
 } else {
@@ -182,12 +232,14 @@ ${bold('Commands:')}
   ${cyan('snapshot')} [path] [-o output.json]   Capture current schema
   ${cyan('diff')}     [snapshot] [path]         Compare against a snapshot
   ${cyan('validate')} <tools.json> [path]       Validate LLM tool definitions
+  ${cyan('watch')}    [path]                    Watch for changes and re-run check
 
 ${bold('Examples:')}
   npx nest-drift check .
   npx nest-drift snapshot . --output snap.json
   npx nest-drift diff nest-drift.snapshot.json .
   npx nest-drift validate tools.json .
+  npx nest-drift watch .
 `)
   if (command && command !== '--help' && command !== '-h') {
     die(`Unknown command: ${command}`)
