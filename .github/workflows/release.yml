@@ -17,9 +17,10 @@ jobs:
             pre: rustup target add aarch64-apple-darwin
             build: napi build --platform --release --target aarch64-apple-darwin
 
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
-            build: napi build --platform --release
+            pre: rustup target add x86_64-apple-darwin
+            build: napi build --platform --release --target x86_64-apple-darwin
 
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
