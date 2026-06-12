@@ -132,6 +132,32 @@ Validation failed. Tool definitions are out of sync.
 
 ---
 
+### `watch` — re-run check on file changes
+
+Watches the project for `.ts` file changes and re-runs `check` automatically. Clears the terminal and shows a fresh report on every save, with a 300ms debounce to avoid noise on rapid edits.
+
+```bash
+npx nest-drift watch .
+```
+
+```
+nest-drift watch [10:42:31]
+
+Found 3 entities, 7 DTOs
+
+OK   User <-> CreateUserDto
+FAIL User <-> UpdateUserDto
+     Field 'role' exists in User but is missing from UpdateUserDto
+
+OK   Product <-> CreateProductDto
+
+Issues found.
+```
+
+Press `Ctrl+C` to stop.
+
+---
+
 ### CLI in package.json scripts
 
 ```json
@@ -139,7 +165,8 @@ Validation failed. Tool definitions are out of sync.
   "scripts": {
     "drift:check":    "nest-drift check .",
     "drift:snapshot": "nest-drift snapshot .",
-    "drift:diff":     "nest-drift diff nest-drift.snapshot.json ."
+    "drift:diff":     "nest-drift diff nest-drift.snapshot.json .",
+    "drift:watch":    "nest-drift watch ."
   }
 }
 ```
@@ -252,6 +279,32 @@ Throws if the snapshot file doesn't exist or is invalid.
 
 ---
 
+### `watch(path, callback)`
+
+Watches the project for `.ts` file changes and calls `callback` with a fresh `CheckReport` on every change (debounced 300ms). Returns a stop function.
+
+```ts
+import { watch } from 'nest-drift'
+
+const stop = watch('./src', (report) => {
+  if (report.hasIssues) {
+    for (const result of report.results.filter(r => !r.ok)) {
+      console.log(`[${result.entity}] has issues`)
+    }
+
+    // Custom alerting — Slack, webhook, whatever you need
+    await sendSlackAlert(report.results)
+  }
+})
+
+// Stop watching when done
+process.on('SIGINT', stop)
+```
+
+Keeps the process alive while watching. Call `stop()` to shut down the watcher and release resources.
+
+---
+
 ### `validate(toolsPath, path)`
 
 Validates LLM tool definitions against the codebase.
@@ -344,6 +397,10 @@ interface FieldChange {
   before: string | null
   after: string | null
 }
+
+// watch()
+type StopFn = () => void
+function watch(path: string, callback: (report: CheckReport) => void): StopFn
 
 // validate()
 interface ValidateReport {
